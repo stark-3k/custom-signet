@@ -33,6 +33,25 @@ CLI_CMD = (
 
 # Recent dispensed transactions (in-memory)
 recent_txs = []
+signet_challenge = ""
+
+
+def load_signet_challenge():
+    global signet_challenge
+    conf = f"{DATADIR}/bitcoin.conf"
+    for _ in range(60):
+        if os.path.exists(conf):
+            break
+        time.sleep(2)
+    try:
+        with open(conf) as f:
+            for line in f:
+                if line.strip().startswith("signetchallenge="):
+                    signet_challenge = line.strip().split("=", 1)[1]
+                    print(f"Signet challenge: {signet_challenge}", flush=True)
+                    return
+    except Exception as e:
+        print(f"Could not read signet challenge: {e}", flush=True)
 
 
 # ── Helpers ─────────────────────────────────────────────────
@@ -136,7 +155,7 @@ def faucet_recent():
 
 @app.route("/api/faucet/config")
 def faucet_config():
-    return jsonify({"ok": True, "mempool_url": MEMPOOL_URL, "max_amount": MAX_AMOUNT})
+    return jsonify({"ok": True, "mempool_url": MEMPOOL_URL, "max_amount": MAX_AMOUNT, "signet_challenge": signet_challenge})
 
 
 @app.route("/health")
@@ -145,6 +164,7 @@ def health():
 
 
 if __name__ == "__main__":
+    load_signet_challenge()
     wait_for_node()
     load_wallet()
     print("Faucet ready on :5090", flush=True)

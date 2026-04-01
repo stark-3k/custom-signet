@@ -192,6 +192,33 @@
   .tx-row .amt { color: var(--btc); font-weight: 600; text-align: right; }
   .tx-row .time { color: var(--text-dim); font-size: 11px; text-align: right; }
 
+  .connect-code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.8;
+    word-break: break-all;
+    position: relative;
+  }
+  .connect-code .label { color: var(--text-dim); }
+  .connect-code .val { color: var(--btc); user-select: all; }
+  .btn-copy {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+    float: right;
+  }
+  .btn-copy:hover { border-color: var(--btc); color: var(--btc); }
+
   .result-box {
     background: var(--bg);
     border: 1px solid var(--border);
@@ -265,6 +292,19 @@
     <div class="card-title">Recent Dispensed</div>
     <div id="tx-list">
       <div style="color:var(--text-dim); font-size:12px;">No transactions yet</div>
+    </div>
+  </div>
+
+  <!-- Connect info -->
+  <div class="card" id="connect-card" style="display:none;">
+    <div class="card-title">Connect to this Signet</div>
+    <p style="font-size:12px; color:var(--text-dim); margin-bottom:12px;">Add this to your <code style="color:var(--btc);">bitcoin.conf</code> to connect:</p>
+    <div class="connect-code">
+      <button class="btn-copy" onclick="copyConfig()">Copy</button>
+      <span class="label">signet=</span><span class="val">1</span><br>
+      <span class="label">[signet]</span><br>
+      <span class="label">signetchallenge=</span><span class="val" id="challenge-val"></span><br>
+      <span class="label">addnode=</span><span class="val" id="addnode-val"></span>
     </div>
   </div>
 </div>
@@ -374,8 +414,20 @@ async function loadConfig() {
     const r = await fetch(API + '/config');
     const d = await r.json();
     if (d.ok && d.mempool_url) MEMPOOL = d.mempool_url;
+    if (d.ok && d.signet_challenge) {
+      $('challenge-val').textContent = d.signet_challenge;
+      $('addnode-val').textContent = window.location.hostname + ':38333';
+      $('connect-card').style.display = '';
+    }
   } catch (e) {}
   $('mempool-link').href = MEMPOOL;
+}
+
+function copyConfig() {
+  const challenge = $('challenge-val').textContent;
+  const addnode = $('addnode-val').textContent;
+  const text = `signet=1\n[signet]\nsignetchallenge=${challenge}\naddnode=${addnode}`;
+  navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard', true));
 }
 
 loadConfig();
