@@ -1,0 +1,198 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────
+# Custom Bitcoin Signet — Full Stack
+# Node · Miner · Control UI · Mempool · Caddy Reverse Proxy
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Caddy Reverse Proxy ───────────────────────────────────
+  # Sits in front of everything. Provides:
+  #   - Clean URLs (no port numbers)
+  #   - Automatic HTTPS when a domain is configured in .env
+  #   - Single entry point for the whole stack
+  caddy:
+    image: caddy:2-alpine
+    container_name: signet-caddy
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/caddy/entrypoint.sh"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3000:3000"
+      - "8080:8080"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/entrypoint.sh:/etc/caddy/entrypoint.sh:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:-:80}
+      - FAUCET_ADDRESS=${FAUCET_ADDRESS:-:3000}
+      - MEMPOOL_ADDRESS=${MEMPOOL_ADDRESS:-:8080}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASS=${ADMIN_PASS:-admin}
+    depends_on:
+      - ui
+      - miner
+      - faucet
+      - mempool-frontend
+
+  # ── Bitcoin Core (custom signet) ──────────────────────────
+  bitcoin:
+    build:
+      context: ./bitcoin
+      dockerfile: Dockerfile
+    container_name: signet-bitcoin
+    restart: unless-stopped
+    volumes:
+      - bitcoin-data:/bitcoin-data
+    ports:
+      - "38333:38333"             # P2P — external nodes connect here
+      - "127.0.0.1:38332:38332"  # RPC — localhost only for safety
+    environment:
+      - BITCOIN_RPC_USER=${BITCOIN_RPC_USER:-signet}
+      - BITCOIN_RPC_PASS=${BITCOIN_RPC_PASS:-signetpass}
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-datadir=/bitcoin-data", "-rpcuser=signet", "-rpcpassword=signetpass", "getblockchaininfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ── Miner Controller ─────────────────────────────────────
+  # No public port — accessed via Caddy at /api/*
+  miner:
+    build:
+      context: ./miner
+      dockerfile: Dockerfile
+    container_name: signet-miner
+    restart: unless-stopped
+    volumes:
+      - bitcoin-data:/bitcoin-data
+      - miner-data:/miner-data
+    environment:
+      - BITCOIN_RPC_USER=${BITCOIN_RPC_USER:-signet}
+      - BITCOIN_RPC_PASS=${BITCOIN_RPC_PASS:-signetpass}
+      - BITCOIN_RPC_HOST=bitcoin
+      - BITCOIN_RPC_PORT=38332
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+
+  # ── Control Panel UI ──────────────────────────────────────
+  # No public port — accessed via Caddy at /
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: signet-ui
+    restart: unless-stopped
+    depends_on:
+      - miner
+
+  # ── Faucet ───────────────────────────────────────────────
+  # No public port — accessed via Caddy at /faucet
+  faucet:
+    build:
+      context: ./faucet
+      dockerfile: Dockerfile
+    container_name: signet-faucet
+    restart: unless-stopped
+    volumes:
+      - bitcoin-data:/bitcoin-data:ro
+    environment:
+      - BITCOIN_RPC_USER=${BITCOIN_RPC_USER:-signet}
+      - BITCOIN_RPC_PASS=${BITCOIN_RPC_PASS:-signetpass}
+      - BITCOIN_RPC_HOST=bitcoin
+      - BITCOIN_RPC_PORT=38332
+      - MEMPOOL_URL=${MEMPOOL_URL:-}
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+
+  # ── Electrs (Electrum Server for Mempool) ─────────────────
+  electrs:
+    image: mempool/electrs:latest
+    container_name: signet-electrs
+    restart: unless-stopped
+    volumes:
+      - bitcoin-data:/bitcoin-data:ro
+      - electrs-data:/electrs-data
+    environment:
+      ELECTRS_NETWORK: "signet"
+      ELECTRS_DAEMON_DIR: "/bitcoin-data"
+      ELECTRS_DAEMON_RPC_ADDR: "bitcoin:38332"
+      ELECTRS_DAEMON_P2P_ADDR: "bitcoin:38333"
+      ELECTRS_ELECTRUM_RPC_ADDR: "0.0.0.0:50001"
+      ELECTRS_COOKIE_FILE: "/bitcoin-data/.cookie"
+      ELECTRS_DB_DIR: "/electrs-data"
+      ELECTRS_LOG_FILTERS: "INFO"
+      ELECTRS_SIGNET_MAGIC: "custom"
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+
+  # ── MariaDB (for Mempool backend) ─────────────────────────
+  mariadb:
+    image: mariadb:10.11
+    container_name: signet-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: mempool
+      MYSQL_USER: mempool
+      MYSQL_PASSWORD: mempool
+      MYSQL_ROOT_PASSWORD: mempoolroot
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+  # ── Mempool Backend ───────────────────────────────────────
+  mempool-backend:
+    image: mempool/backend:latest
+    container_name: signet-mempool-backend
+    restart: unless-stopped
+    environment:
+      MEMPOOL_BACKEND: "electrum"
+      MEMPOOL_NETWORK: "signet"
+      CORE_RPC_HOST: "bitcoin"
+      CORE_RPC_PORT: "38332"
+      CORE_RPC_USERNAME: "${BITCOIN_RPC_USER:-signet}"
+      CORE_RPC_PASSWORD: "${BITCOIN_RPC_PASS:-signetpass}"
+      ELECTRUM_HOST: "electrs"
+      ELECTRUM_PORT: "50001"
+      ELECTRUM_TLS_ENABLED: "false"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mariadb"
+      DATABASE_PORT: "3306"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+    depends_on:
+      mariadb:
+        condition: service_started
+      electrs:
+        condition: service_started
+      bitcoin:
+        condition: service_healthy
+
+  # ── Mempool Frontend ──────────────────────────────────────
+  # No public port — accessed via Caddy on :8080 (or subdomain)
+  mempool-frontend:
+    image: mempool/frontend:latest
+    container_name: signet-mempool-frontend
+    restart: unless-stopped
+    environment:
+      FRONTEND_HTTP_PORT: "8080"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-backend"
+    depends_on:
+      - mempool-backend
+
+volumes:
+  bitcoin-data:
+  miner-data:
+  electrs-data:
+  mariadb-data:
+  caddy-data:
+  caddy-config:

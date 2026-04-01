@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signet Faucet</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3a;
+    --border-glow: #f7931a33;
+    --text: #e8e6e3;
+    --text-dim: #8888a0;
+    --btc: #f7931a;
+    --btc-dim: #f7931a66;
+    --green: #00d26a;
+    --red: #ff4757;
+    --blue: #4a9eff;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Space Grotesk', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--mono);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 24px 20px; }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+  }
+  .header h1 {
+    font-family: var(--sans);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .header h1 span { color: var(--btc); }
+  .header .links a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 12px;
+    margin-left: 16px;
+    transition: color 0.2s;
+  }
+  .header .links a:hover { color: var(--btc); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: var(--border-glow); }
+  .card-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+
+  .balance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .balance-val {
+    font-family: var(--sans);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--btc);
+  }
+  .balance-label { font-size: 11px; color: var(--text-dim); }
+
+  .form-group { margin-bottom: 12px; }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .form-group input {
+    font-family: var(--mono);
+    font-size: 13px;
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus { outline: none; border-color: var(--btc); }
+  .form-group input::placeholder { color: var(--text-dim); opacity: 0.5; }
+
+  .amount-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .amount-row .form-group { flex: 1; }
+  .amount-presets {
+    display: flex;
+    gap: 6px;
+    padding-bottom: 0;
+    margin-bottom: 12px;
+  }
+  .amount-presets button {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .amount-presets button:hover { border-color: var(--btc); color: var(--btc); background: #f7931a11; }
+
+  .btn-send {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--btc);
+    border-radius: 6px;
+    cursor: pointer;
+    background: #f7931a11;
+    color: var(--btc);
+    transition: all 0.2s;
+    margin-top: 4px;
+  }
+  .btn-send:hover { background: #f7931a22; }
+  .btn-send:active { transform: scale(0.98); }
+  .btn-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .tx-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 80px 80px;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #ffffff06;
+    font-size: 12px;
+    align-items: center;
+  }
+  .tx-row .addr, .tx-row .txid {
+    color: var(--text-dim);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tx-row .txid a { color: var(--blue); text-decoration: none; }
+  .tx-row .txid a:hover { text-decoration: underline; }
+  .tx-row .amt { color: var(--btc); font-weight: 600; text-align: right; }
+  .tx-row .time { color: var(--text-dim); font-size: 11px; text-align: right; }
+
+  .result-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 11px;
+    word-break: break-all;
+    display: none;
+  }
+  .result-box.show { display: block; }
+  .result-box.ok { border-color: #00d26a44; color: var(--green); }
+  .result-box.err { border-color: #ff475744; color: var(--red); }
+  .result-box .txid-label { color: var(--text-dim); margin-bottom: 4px; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 999;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.ok { background: #00d26a22; border: 1px solid #00d26a66; color: var(--green); }
+  .toast.err { background: #ff475722; border: 1px solid #ff475766; color: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <h1><span>&#x20bf;</span> Signet Faucet</h1>
+    <div class="links">
+      <a href="#" id="mempool-link" target="_blank">Mempool &rarr;</a>
+    </div>
+  </div>
+
+  <!-- Send form -->
+  <div class="card">
+    <div class="card-title">Request Coins</div>
+    <div class="form-group">
+      <label>Recipient Address</label>
+      <input type="text" id="address" placeholder="tb1q... or bcrt1q..." autocomplete="off" spellcheck="false">
+    </div>
+    <div class="amount-row">
+      <div class="form-group">
+        <label>Amount (BTC)</label>
+        <input type="number" id="amount" value="0.1" min="0.001" max="1" step="0.001">
+      </div>
+    </div>
+    <div class="amount-presets">
+      <button onclick="setAmount(0.01)">0.01</button>
+      <button onclick="setAmount(0.05)">0.05</button>
+      <button onclick="setAmount(0.1)">0.1</button>
+      <button onclick="setAmount(0.5)">0.5</button>
+      <button onclick="setAmount(1)">1.0</button>
+    </div>
+    <button class="btn-send" id="btn-send" onclick="sendCoins()">Send Coins</button>
+    <div id="result" class="result-box"></div>
+  </div>
+
+  <!-- Recent transactions -->
+  <div class="card">
+    <div class="card-title">Recent Dispensed</div>
+    <div id="tx-list">
+      <div style="color:var(--text-dim); font-size:12px;">No transactions yet</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const API = '/api/faucet';
+
+function $(id) { return document.getElementById(id); }
+
+function toast(msg, ok = true) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (ok ? 'ok' : 'err');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+function setAmount(v) {
+  $('amount').value = v;
+}
+
+function truncAddr(a) {
+  if (!a || a.length < 20) return a || '';
+  return a.slice(0, 12) + '...' + a.slice(-8);
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+async function fetchBalance() {
+  try {
+    const r = await fetch(API + '/balance');
+    const d = await r.json();
+    if (d.ok) $('balance').textContent = d.balance.toFixed(8);
+  } catch (e) {}
+}
+
+async function fetchRecent() {
+  try {
+    const r = await fetch(API + '/recent');
+    const d = await r.json();
+    if (d.ok && d.transactions.length) {
+      $('tx-list').innerHTML = d.transactions.map(tx => `
+        <div class="tx-row">
+          <span class="addr" title="${tx.address}">${truncAddr(tx.address)}</span>
+          <span class="txid"><a href="${MEMPOOL}/tx/${tx.txid}" target="_blank" title="${tx.txid}">${tx.txid.slice(0,10)}...${tx.txid.slice(-6)}</a></span>
+          <span class="amt">${tx.amount} BTC</span>
+          <span class="time">${timeAgo(tx.time)}</span>
+        </div>
+      `).join('');
+    }
+  } catch (e) {}
+}
+
+async function sendCoins() {
+  const address = $('address').value.trim();
+  const amount = parseFloat($('amount').value);
+  const btn = $('btn-send');
+  const result = $('result');
+
+  if (!address) { toast('Enter an address', false); return; }
+  if (!amount || amount < 0.001) { toast('Minimum 0.001 BTC', false); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  result.className = 'result-box';
+
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, amount })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast(`Sent ${d.amount} BTC`, true);
+      result.innerHTML = `<div class="txid-label">Transaction ID:</div><a href="${MEMPOOL}/tx/${d.txid}" target="_blank" style="color:var(--green);word-break:break-all;">${d.txid}</a>`;
+      result.className = 'result-box show ok';
+      $('address').value = '';
+      fetchBalance();
+      fetchRecent();
+    } else {
+      toast(d.error || 'Failed', false);
+      result.innerHTML = d.error || 'Transaction failed';
+      result.className = 'result-box show err';
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, false);
+    result.innerHTML = e.message;
+    result.className = 'result-box show err';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Send Coins';
+}
+
+let MEMPOOL = window.location.protocol + '//' + window.location.hostname + ':8080';
+
+async function loadConfig() {
+  try {
+    const r = await fetch(API + '/config');
+    const d = await r.json();
+    if (d.ok && d.mempool_url) MEMPOOL = d.mempool_url;
+  } catch (e) {}
+  $('mempool-link').href = MEMPOOL;
+}
+
+loadConfig();
+
+fetchBalance();
+fetchRecent();
+setInterval(() => { fetchBalance(); fetchRecent(); }, 10000);
+</script>
+
+</body>
+</html>

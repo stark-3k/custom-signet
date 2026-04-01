@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────
+# Reverse proxy for custom signet stack
+#
+# Two modes controlled by the SITE_ADDRESS env var:
+#
+#   IP only:  SITE_ADDRESS=":80"         → HTTP on port 80
+#   Domain:   SITE_ADDRESS="signet.example.com"  → auto HTTPS
+#
+# Mempool runs on a separate port (8080) because it's a
+# full SPA that expects to live at the root path.
+# With a domain, set MEMPOOL_ADDRESS="mempool.signet.example.com"
+# to get HTTPS on mempool too.
+# ─────────────────────────────────────────────────────────
+
+{$SITE_ADDRESS} {
+	basicauth {
+		{$ADMIN_USER} {$ADMIN_HASH}
+	}
+
+	# Control panel API
+	handle /api/* {
+		reverse_proxy miner:5080
+	}
+
+	# Control panel UI
+	handle {
+		reverse_proxy ui:80
+	}
+}
+
+# Faucet — public, separate port
+{$FAUCET_ADDRESS} {
+	reverse_proxy faucet:5090
+}
+
+# Mempool explorer — separate site block
+{$MEMPOOL_ADDRESS} {
+	reverse_proxy mempool-frontend:8080
+}
