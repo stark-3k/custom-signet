@@ -149,18 +149,21 @@ def monitor_ongoing():
     except Exception:
         pass
 
-    while state.running and state.ongoing_process:
-        if state.ongoing_process.poll() is not None:
+    while state.running:
+        proc = state.ongoing_process
+        if proc is None:
+            break
+        if proc.poll() is not None:
             stderr = ""
             try:
-                stderr = state.ongoing_process.stderr.read()
+                stderr = proc.stderr.read()
             except Exception:
                 pass
             with state.lock:
                 state.running = False
                 state.errors.append(
                     f"{datetime.now(timezone.utc).isoformat()} — "
-                    f"Miner exited (code {state.ongoing_process.returncode}): {stderr}"
+                    f"Miner exited (code {proc.returncode}): {stderr}"
                 )
             print(f"Miner process exited: {stderr}", flush=True)
             break
@@ -268,6 +271,7 @@ def api_start():
         proc = subprocess.Popen(
             cmd, shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True,
         )
         state.ongoing_process = proc
         state.running = True
@@ -291,24 +295,26 @@ def api_stop():
     if not state.running:
         return jsonify({"ok": False, "message": "Not running"})
 
-    # Stop ongoing miner process
-    if state.ongoing_process and state.ongoing_process.poll() is None:
+    # Stop ongoing miner process (kill entire process group)
+    proc = state.ongoing_process
+    if proc and proc.poll() is None:
         try:
-            os.kill(state.ongoing_process.pid, signal.SIGTERM)
-            state.ongoing_process.wait(timeout=10)
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            proc.wait(timeout=10)
         except Exception:
             try:
-                os.kill(state.ongoing_process.pid, signal.SIGKILL)
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except Exception:
                 pass
 
     # Stop fast miner thread
     state.fast_stop.set()
 
-    state.running = False
-    state.mode = None
-    state.ongoing_process = None
-    state.start_time = None
+    with state.lock:
+        state.running = False
+        state.mode = None
+        state.ongoing_process = None
+        state.start_time = None
     return jsonify({"ok": True, "message": "Mining stopped"})
 
 
